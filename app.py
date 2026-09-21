@@ -53,7 +53,7 @@ def build_row(data: dict) -> dict:
     for t in TYPES:
         row[f"type_{t}"] = 1 if data["type"] == t else 0
 
-    # The notebook trained on df.astype(int), so we truncate the same way.
+    
     return {k: int(val) for k, val in row.items()}
 
 
