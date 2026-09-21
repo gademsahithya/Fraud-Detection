@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Transaction fraud screening</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+
+  <header class="page-head">
+    <div>
+      <h1>Screen a transaction</h1>
+      <p>Enter the details of a payment. The XGBoost model trained on your PaySim data returns a fraud probability.</p>
+    </div>
+    <div class="samples" role="group" aria-label="Fill with an example">
+      <span class="samples-label">Fill with an example</span>
+      <button type="button" class="chip" data-sample="normal">Everyday payment</button>
+      <button type="button" class="chip" data-sample="fraud">Account-draining transfer</button>
+    </div>
+  </header>
+
+  <main class="layout">
+
+    <form id="txForm" class="form" novalidate>
+
+      <fieldset class="group">
+        <legend>Transaction</legend>
+
+        <div class="field">
+          <span class="field-label" id="typeLabel">Type</span>
+          <div class="segmented" role="radiogroup" aria-labelledby="typeLabel">
+            <label><input type="radio" name="type" value="PAYMENT" checked><span>Payment</span></label>
+            <label><input type="radio" name="type" value="TRANSFER"><span>Transfer</span></label>
+            <label><input type="radio" name="type" value="CASH_OUT"><span>Cash out</span></label>
+            <label><input type="radio" name="type" value="CASH_IN"><span>Cash in</span></label>
+            <label><input type="radio" name="type" value="DEBIT"><span>Debit</span></label>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="field">
+            <label for="amount">Amount</label>
+            <input id="amount" name="amount" type="number" min="0" step="any" required inputmode="decimal">
+          </div>
+          <div class="field">
+            <label for="step">Hour of simulation</label>
+            <input id="step" name="step" type="number" min="1" max="743" step="1" required inputmode="numeric">
+            <small>1 to 743, as in the PaySim dataset</small>
+          </div>
+        </div>
+      </fieldset>
+
+      <fieldset class="group">
+        <legend>Sender account</legend>
+        <div class="row">
+          <div class="field">
+            <label for="oldbalanceOrg">Balance before</label>
+            <input id="oldbalanceOrg" name="oldbalanceOrg" type="number" min="0" step="any" required inputmode="decimal">
+          </div>
+          <div class="field">
+            <label for="newbalanceOrig">Balance after</label>
+            <input id="newbalanceOrig" name="newbalanceOrig" type="number" min="0" step="any" required inputmode="decimal">
+          </div>
+        </div>
+        <div class="row three">
+          <div class="field">
+            <label for="origin_transaction_count">Past transactions</label>
+            <input id="origin_transaction_count" name="origin_transaction_count" type="number" min="0" step="1" required inputmode="numeric">
+          </div>
+          <div class="field">
+            <label for="origin_avg_amount">Average past amount</label>
+            <input id="origin_avg_amount" name="origin_avg_amount" type="number" min="0" step="any" required inputmode="decimal">
+          </div>
+          <div class="field">
+            <label for="origin_max_amount">Largest past amount</label>
+            <input id="origin_max_amount" name="origin_max_amount" type="number" min="0" step="any" required inputmode="decimal">
+          </div>
+        </div>
+      </fieldset>
+
+      <fieldset class="group">
+        <legend>Receiver account</legend>
+        <div class="row">
+          <div class="field">
+            <label for="oldbalanceDest">Balance before</label>
+            <input id="oldbalanceDest" name="oldbalanceDest" type="number" min="0" step="any" required inputmode="decimal">
+          </div>
+          <div class="field">
+            <label for="newbalanceDest">Balance after</label>
+            <input id="newbalanceDest" name="newbalanceDest" type="number" min="0" step="any" required inputmode="decimal">
+          </div>
+        </div>
+        <div class="row">
+          <div class="field">
+            <label for="destination_transaction_count">Past transactions received</label>
+            <input id="destination_transaction_count" name="destination_transaction_count" type="number" min="0" step="1" required inputmode="numeric">
+          </div>
+          <div class="field">
+            <label for="destination_unique_origins">Different senders so far</label>
+            <input id="destination_unique_origins" name="destination_unique_origins" type="number" min="0" step="1" required inputmode="numeric">
+          </div>
+        </div>
+      </fieldset>
+
+      <p id="formError" class="form-error" role="alert" hidden></p>
+
+      <div class="actions">
+        <button type="submit" class="primary" id="submitBtn">Check transaction</button>
+        <button type="reset" class="ghost" id="resetBtn">Clear form</button>
+      </div>
+    </form>
+
+    <aside class="result" aria-live="polite">
+      <div class="result-card" id="resultCard" data-state="idle">
+
+        <svg class="gauge" viewBox="0 0 220 128" role="img" aria-label="Fraud probability gauge">
+          <path class="gauge-track" d="M 20 110 A 90 90 0 0 1 200 110" pathLength="100"/>
+          <path class="gauge-fill" id="gaugeFill" d="M 20 110 A 90 90 0 0 1 200 110" pathLength="100"/>
+          <line class="gauge-tick" id="gaugeTick" x1="0" y1="0" x2="0" y2="0"/>
+          <text class="gauge-value" id="gaugeValue" x="110" y="98" text-anchor="middle">–</text>
+          <text class="gauge-caption" x="110" y="120" text-anchor="middle">chance of fraud</text>
+        </svg>
+
+        <h2 id="verdict">No result yet</h2>
+        <p id="verdictText" class="verdict-text">Fill in the form or pick an example, then check the transaction.</p>
+
+        <p class="threshold-note">
+          The notch on the gauge marks the model's flagging threshold
+          (<strong id="thresholdValue">{{ threshold }}</strong>).
+          Anything at or above it is flagged as fraud.
+        </p>
+      </div>
+
+      <details class="seen" id="seen" hidden>
+        <summary>What the model saw</summary>
+        <dl id="seenList"></dl>
+      </details>
+    </aside>
+
+  </main>
+
+  <footer class="page-foot">
+    Model output is a risk estimate, not a final decision. Route flagged transactions to a human reviewer.
+  </footer>
+
+  <script>window.FRAUD_THRESHOLD = { threshold };</script>
+  <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+</body>
+</html>
